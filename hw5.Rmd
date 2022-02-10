@@ -1,0 +1,155 @@
+---
+title: "Assignment 5"
+author: "Nicholas Irons [njirons@uw.edu]"
+date: '`r format(Sys.time(), "%Y-%m-%d")`'
+header-includes:
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure with caption = h
+output: 
+    html_document:
+        number_sections: true      
+        self_contained: true
+        toc: true
+        toc_float:
+            collapsed: true
+            smooth_scroll: false
+    pdf_document:
+        number_sections: true
+        toc: true
+        fig_caption: yes
+        keep_tex: yes
+    always_allow_html: true
+urlcolor: blue  
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ISOcodes)
+library(HMDHFDplus)
+library(tidyverse)
+library(keyring)
+library(ggpubr)
+
+library(captioner)
+table_nums <- captioner(prefix = "Table")
+figure_nums <- captioner(prefix = "Figure")
+```
+
+# HFD exploration
+
+Get country codes and define functions to pull data from HFD:
+
+```{r}
+# HFD country codes
+hfdcodes <- getHFDcountries() %>% tibble(ccode = .)
+
+# ISO country codes
+isocodes <- ISO_3166_1 %>% tibble() %>% select(ccode = Alpha_3, Name)
+
+# join ISO codes with country names
+hfdcodes <- hfdcodes %>% left_join(isocodes, by = "ccode")
+
+# update missing country names 
+hfdcodes <- hfdcodes %>% 
+    mutate(Name = 
+        case_when(ccode == "FRATNP" ~  "France",
+                  ccode == "DEUTNP" ~  "Germany",
+                  ccode == "DEUTE" ~   "East Germany",
+                  ccode == "DEUTW" ~   "West Germany",
+                  ccode == "GBR_NP" ~  "United Kingdom", 
+                  ccode == "GBRTENW" ~ "England and Wales",
+                  ccode == "GBR_SCO" ~ "Scotland",
+                  ccode == "GBR_NIR" ~ "Northern Ireland",
+                  TRUE ~ Name)
+    )
+
+# a function to read HFD for one country and one item
+read_hfd_country <- function(CNTRY, item) {
+  HMDHFDplus::readHFDweb(
+    # the country from the function call
+    CNTRY = CNTRY,
+    # the item to download
+    item = item,
+    # the username from this key's record
+    username = keyring::key_list("human-fertility-database")$username,
+    # the password for this key's record
+    password = keyring::key_get(
+      service = "human-fertility-database",
+      username = keyring::key_list("human-fertility-database")$username
+    )
+  )
+}
+
+# Download a data set iteratively for all named countries using purrr::map()
+read_hfd_countries_item <- function(countries, item){
+    countries %>%
+        # Returns a list of data.frames, adding a column for country code to each
+        # the map() function performs a run of Ben's read_hmd_country() 
+        #   function for each listed country
+        purrr::map_dfr(function(ccode) {
+            # read item
+            read_hfd_country(ccode, item) %>%
+                # this adds the column "country" storing the country ISO code
+                dplyr::mutate(ccode = ccode)
+        }) %>%
+        # Phil added this to make it a tibble
+        tibble() %>% 
+        # and add country name
+        left_join(hfdcodes, by = "ccode")
+}
+```
+
+Pull CBR and TFR data for United States, Lithuania, and Japan:
+
+```{r}
+# look at US, Lithuania, Japan
+countries <- hfdcodes %>% 
+    filter(Name %in% c("United States", "Lithuania", "Japan")) %>% 
+    pull(ccode)
+
+# call crude birth rates
+cbr <- read_hfd_countries_item(countries = countries, item = "cbrRR")
+
+# call total fertility rates
+tfr <- read_hfd_countries_item(countries = countries, item = "tfrRR")
+
+# combine datasets
+df <- cbr %>% left_join(tfr, by = c("Year","Name","ccode"))
+```
+
+Plot CBR and TFR over time in each country:
+
+```{r}
+# plot CBR over time
+cbr_plot <- qplot(Year,CBR,data=df,color = Name,geom="line")
+
+# plot TFR over time
+tfr_plot <- qplot(Year,TFR,data=df,color = Name,geom="line")
+
+# arrange plots in a nice layout
+ggarrange(cbr_plot, tfr_plot,ncol = 2, nrow = 1,common.legend = TRUE, legend="bottom")
+```
+\
+_`r figure_nums(name = "cbr-tfr", caption = "Yearly CBR and TFR in 3 countries.")`_
+
+From  `r figure_nums(name="cbr-tfr",display="cite")` we see a general trend of declining crude birth rates and total fertility rates. However, these two measures are not exact proxies for each other. Total fertility rates do not depend on age-structure; they are calculated as a sum of age-specific fertility rates. On the other hand, crude birth rates depend on population structure: populations with more women of childbearing age will experience higher birth rates when controlling for total fertility rates. To get a sense of the different information encoded in these rates, we now plot the ratio of CBR and TFR over time in each country:
+
+```{r}
+# plot ratio CBR/TFR over time
+ratio <- qplot(Year,CBR/TFR,data=df,color = Name,geom="line")
+ggarrange(ratio,ncol = 1, nrow = 1,common.legend = TRUE, legend="bottom")
+```
+\
+_`r figure_nums(name = "ratio", caption = "Ratio CBR/TFR in 3 countries.")`_
+
+
+
+
+
+# Source code
+
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
+
