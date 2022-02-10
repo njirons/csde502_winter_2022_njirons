@@ -144,7 +144,7 @@ ggarrange(ratio,ncol = 1, nrow = 1,common.legend = TRUE, legend="bottom")
 \
 _`r figure_nums(name = "ratio", caption = "Ratio CBR/TFR in 3 countries.")`_
 
-
+From  `r figure_nums(name="ratio",display="cite")`, we see a declining trend in Lithuania and Japan, meaning that CBR has been declining relative to TFR. We see more of an oscillating trend in the US, with the oscillation on the downswing in the last few decades. In light of the discussion in the last paragraph, these trends align with common demographic knowledge about these populations. Namely, Japan and many European countries, including Lithuania, are facing a demographic crisis caused by declining fertility, which has resulted in an aging population. This is also true to some extent in the US and North America, although populations in these countries remain younger with higher fertility. In the US we see that TFR has remained relatively constant since 1975, while TFR in Japan and Lithuania have increased since 2000. Simultaneously, the ratio CBR/TFR has been generally declining in these time periods, which is reflective of the older populations in these countries yielding relatively fewer births, even though fertility is constant or on the rise.
 
 
 
