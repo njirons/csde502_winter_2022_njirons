@@ -6,11 +6,6 @@ header-includes:
 - \usepackage{float} #use the 'float' package
 - \floatplacement{figure}{H} #make every figure with caption = h
 output: 
-    pdf_document:
-        number_sections: false
-        toc: true
-        fig_caption: yes
-        keep_tex: yes
     html_document:
         number_sections: false      
         self_contained: true
@@ -18,6 +13,11 @@ output:
         toc_float:
             collapsed: true
             smooth_scroll: false
+    pdf_document:
+        number_sections: false
+        toc: true
+        fig_caption: yes
+        keep_tex: yes
     always_allow_html: true
 urlcolor: blue  
 always_allow_html: true
@@ -25,10 +25,273 @@ always_allow_html: true
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(
+    tidyverse,
+    magrittr,
+    knitr,
+    kableExtra,
+    readstata13,
+    haven,
+    pdftools,
+    curl,
+    ggplot2,
+    captioner
+)
+
+table_nums <- captioner(prefix = "Table")
+figure_nums <- captioner(prefix = "Figure")
 ```
 
-# Source code
+# Question 1: generate data frame
 
-```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+First we load in the full dataset.
+
+```{r, warning=F,message=F}
+# download and unzip the larger data set
+myUrl <- "http://staff.washington.edu/phurvitz/csde502_winter_2021/data/21600-0001-Data.dta.zip"
+
+# zip file in $temp -- basename gets just the file name from the URL and not the URL path;
+#   file.path stitches the tempdir() path to the file name
+mytempdir <- tempdir()
+zipfile <- file.path(mytempdir, basename(myUrl))
+
+# dta file in $temp
+dtafile <- tools::file_path_sans_ext(zipfile)
+
+# check if the dta file exists
+if (!file.exists(dtafile)) {
+    # if the dta file doesn't exist, check for the zip file
+    # check if the zip file exists, download if necessary
+    if (!file.exists(zipfile)) {
+        curl::curl_download(url = myUrl, destfile = zipfile)
+    }
+    # unzip the downloaded zip file
+    if (file.exists(zipfile)) {
+        unzip(zipfile = zipfile, exdir = mytempdir)
+    }
+}
+
+# if the data set has not been read, read it in
+if (!exists("ahcomplete")) {
+    ahcomplete <- haven::read_dta(dtafile)
+}
 ```
 
+Now we select 4 columns: Hispanic origin, Asian race, language spoken at home, born in the United States.
+
+```{r,warning=F,message=F}
+# select columns
+df <- ahcomplete %>%
+    select(
+        hispanic = H1GI4,
+        asian = H1GI6D,
+        language = H1GI10,
+        us_born = H1GI11
+    )
+
+# set label attribute for data frame
+attributes(df)$label <- "Add Health questions: Hispanic origin, Asian race, language spoken at home, born in the US"
+
+# create the factor variables with labels
+# hispanic
+hispanic_levels <- df$hispanic %>%
+    attributes() %>%
+    extract2("labels") %>%
+    names()
+
+df$hispanic <- factor(df$hispanic,labels = hispanic_levels)
+
+# asian
+asian_levels <- df$asian %>%
+    attributes() %>%
+    extract2("labels") %>%
+    names()
+
+df$asian <- factor(df$asian,labels = asian_levels)
+
+# home language
+language_levels <- df$language %>%
+    attributes() %>%
+    extract2("labels") %>%
+    names()
+
+df$language <- factor(df$language,labels = language_levels)
+
+# us_born
+us_born_levels <- df$us_born %>%
+    attributes() %>%
+    extract2("labels") %>%
+    names()
+
+df$us_born <- factor(df$us_born,labels = us_born_levels)
+
+# set label attributes for columns
+attributes(df$hispanic)$label <- "ARE YOU OF HISPANIC ORIGIN?"
+attributes(df$asian)$label <- "RACE-ASIAN?"
+attributes(df$language)$label <- "LANGUAGE SPOKEN AT HOME"
+attributes(df$us_born)$label <- "BORN IN THE UNITED STATES?"
+```
+
+# Question 2: save data frame as RDS
+
+Save the data frame as an RDS file:
+
+```{r, warning=F,message=F}
+saveRDS(object = df, file = file.path(mytempdir, "hw7_df.RDS"))
+```
+
+# Question 3: create frequency tables
+
+Create frequency tables from each variable:
+
+```{r, warning=F,message=F}
+# hispanic
+df %>%
+    group_by(hispanic) %>%
+    summarise(n = n()) %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    mutate(`%` = `%` %>% round(1)) %>%
+    kable() %>%
+    kable_styling(
+        full_width = FALSE, position = "left",
+        bootstrap_options = c("striped", "hover", "condensed", "responsive")
+    )
+```
+\
+*`r table_nums(name = "hispanic", caption = "Count and percent by Hispanic origin.")`*
+
+```{r, warning=F,message=F}
+# asian
+df %>%
+    group_by(asian) %>%
+    summarise(n = n()) %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    mutate(`%` = `%` %>% round(1)) %>%
+    kable() %>%
+    kable_styling(
+        full_width = FALSE, position = "left",
+        bootstrap_options = c("striped", "hover", "condensed", "responsive")
+    )
+```
+\
+*`r table_nums(name = "asian", caption = "Count and percent by Asian race.")`*
+
+```{r, warning=F,message=F}
+# language
+df %>%
+    group_by(language) %>%
+    summarise(n = n()) %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    mutate(`%` = `%` %>% round(1)) %>%
+    kable() %>%
+    kable_styling(
+        full_width = FALSE, position = "left",
+        bootstrap_options = c("striped", "hover", "condensed", "responsive")
+    )
+```
+\
+*`r table_nums(name = "language", caption = "Count and percent by language spoken at home.")`*
+
+```{r, warning=F,message=F}
+# us_born
+df %>%
+    group_by(us_born) %>%
+    summarise(n = n()) %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    mutate(`%` = `%` %>% round(1)) %>%
+    kable() %>%
+    kable_styling(
+        full_width = FALSE, position = "left",
+        bootstrap_options = c("striped", "hover", "condensed", "responsive")
+    )
+```
+\
+*`r table_nums(name = "us_born", caption = "Count and percent by US born.")`*
+
+Create a frequency tables from two variables:
+
+```{r, warning=F,message=F}
+# hispanic x home language
+df %>%
+    group_by(hispanic, language) %>%
+    summarise(n = n(), .groups = "drop_last") %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    mutate(`%` = `%` %>% round(1)) %>%
+    kable() %>%
+    kable_styling(
+        full_width = FALSE, position = "left",
+        bootstrap_options = c("striped", "hover", "condensed", "responsive")
+    )
+```
+\
+*`r table_nums(name = "hispanic-language", caption = "Count and percent of language spoken at home by Hispanic origin.")`*
+
+```{r, warning=F,message=F}
+# home language x hispanic
+df %>%
+    group_by(language, hispanic) %>%
+    summarise(n = n(), .groups = "drop_last") %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    mutate(`%` = `%` %>% round(1)) %>%
+    kable() %>%
+    kable_styling(
+        full_width = FALSE, position = "left",
+        bootstrap_options = c("striped", "hover", "condensed", "responsive")
+    )
+```
+\
+*`r table_nums(name = "language-hispanic", caption = "Count and percent of Hispanic origin by language spoken at home.")`*
+
+# Question 4: create a graph
+
+```{r, warning=F,message=F}
+hispanic_language <- df %>%
+    group_by(
+        hispanic,
+        language
+    ) %>%
+    summarise(n = n(), .groups = "drop_last") %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    filter(!str_detect(hispanic, regex("refused|know", ignore_case = TRUE)),
+           !str_detect(language, regex("refused|know", ignore_case = TRUE)))
+
+ggplot(data = hispanic_language, mapping = aes(x = hispanic, y = `%`, fill = language)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    scale_fill_discrete(name = "Home language") +
+    xlab("Hispanic origin")
+```
+\
+*`r figure_nums(name = "hispanic-language", caption = "Bar graph of percent language spoken at home by Hispanic origin.")`*
+
+```{r, warning=F,message=F}
+language_hispanic <- df %>%
+    group_by(
+        language,
+        hispanic
+    ) %>%
+    summarise(n = n(), .groups = "drop_last") %>%
+    mutate(`%` = n / sum(n) * 100) %>%
+    filter(!str_detect(hispanic, regex("refused|know", ignore_case = TRUE)),
+           !str_detect(language, regex("refused|know", ignore_case = TRUE)))
+
+ggplot(data = language_hispanic, mapping = aes(x = language, y = `%`, fill = hispanic)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    scale_fill_discrete(name = "Hispanic origin") +
+    xlab("Home language")
+```
+\
+*`r figure_nums(name = "language-hispanic", caption = "Bar graph of Hispanic origin by percent language spoken at home.")`*
+
+### Source code for this document
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+### Complete Rmd code
+
+```{r comment=''}
+cat(readLines(current_input(dir = TRUE)), sep = '\n')
+```
