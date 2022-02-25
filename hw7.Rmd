@@ -1,0 +1,34 @@
+---
+title: "Assignment 7"
+author: "Nicholas Irons [njirons@uw.edu]"
+date: '`r format(Sys.time(), "%Y-%m-%d")`'
+header-includes:
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure with caption = h
+output: 
+    pdf_document:
+        number_sections: false
+        toc: true
+        fig_caption: yes
+        keep_tex: yes
+    html_document:
+        number_sections: false      
+        self_contained: true
+        toc: true
+        toc_float:
+            collapsed: true
+            smooth_scroll: false
+    always_allow_html: true
+urlcolor: blue  
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Source code
+
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
+
