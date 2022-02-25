@@ -246,6 +246,7 @@ df %>%
 # Question 4: create a graph
 
 ```{r, warning=F,message=F}
+# hispanic x home language
 hispanic_language <- df %>%
     group_by(
         hispanic,
@@ -266,6 +267,7 @@ ggplot(data = hispanic_language, mapping = aes(x = hispanic, y = `%`, fill = lan
 *`r figure_nums(name = "hispanic-language", caption = "Bar graph of percent language spoken at home by Hispanic origin.")`*
 
 ```{r, warning=F,message=F}
+# home language x hispanic
 language_hispanic <- df %>%
     group_by(
         language,
