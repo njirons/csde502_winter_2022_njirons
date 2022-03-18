@@ -1,0 +1,324 @@
+---
+title: "CSDE 502 Winter 2021, Assignment 10"
+author: "Nicholas Irons [njirons@uw.edu]"
+output: 
+    bookdown::html_document2:
+        number_sections: true
+        self_contained: true
+        code_folding: hide
+        toc: true
+        toc_float:
+            collapsed: true
+            smooth_scroll: false
+    pdf_document:
+        number_sections: true
+        toc: true
+        fig_cap: yes
+        keep_tex: yes
+urlcolor: blue 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(
+    tidyverse,
+    magrittr,
+    knitr,
+    kableExtra,
+    haven,
+    pdftools,
+    curl,
+    ggplot2,
+    captioner
+)
+
+figure_nums <- captioner(prefix = "Figure")
+table_nums <- captioner(prefix = "Table")
+
+# path to this file name
+if (!interactive()) {
+    fnamepath <- knitr::current_input(dir = TRUE)
+} else {
+    fnamepath <- ""
+}
+```
+
+# Exploratory Data Analysis: Add Health Data
+
+As described in the assignment prompt, our goal is to look at sociodemographic predictors of the number of correct answers to the Add Health Knowledge Quiz. 
+
+## Data processing
+
+We begin by loading in the Add Health Wave 1 Data and calculating the number of correct answers of each participant above the age of 15.
+
+```{r}
+# load Add Health Wave 1 data
+dat <- haven::read_dta("http://staff.washington.edu/phurvitz/csde502_winter_2021/data/AHwave1_v1.dta")
+
+metadata <- bind_cols(
+    # variable name
+    varname = colnames(dat),
+    # label
+    varlabel = lapply(dat, function(x) attributes(x)$label) %>% 
+        unlist(),
+    # values
+    varvalues = lapply(dat, function(x) attributes(x)$labels) %>% 
+        # names the variable label vector
+        lapply(., function(x) names(x)) %>% 
+        # as character
+        as.character() %>% 
+        # remove the c() construction
+        str_remove_all("^c\\(|\\)$")
+)
+
+# select knowledge quiz columns
+mydat <- dat %>% 
+    filter(h1kq1a != 7) %>% 
+    select(
+        aid,
+        matches("h1kq.*a")
+    )
+
+# the correct answers from viewing the metadata
+correct <- c(2, 1, 2, 2, 2, 2, 2, 1, 2, 2) 
+
+# make a named vector of the answers using the selected column names
+names(correct) <- str_subset(string = names(mydat),
+                             pattern = "h1kq.*a")
+
+# determine correct answers
+answers <- mydat %>%
+    # drop the aid column
+    select(-aid) %>% 
+    # run the sweep
+    sweep(x = ., MARGIN = 2, STATS = correct, FUN = "==") %>% 
+    # convert to data frame
+    data.frame()
+
+# calculate number of correct answers
+answers %<>%
+    # calculate the rowSums
+    mutate(h1kqNa_sum = rowSums(.)) %>% 
+    # bring the ID back in
+    mutate(aid = mydat$aid) %>% 
+    # reorder columns
+    select(aid, h1kqNa_sum, everything())
+
+# merge with original dataset
+answers %<>% 
+    left_join(dat, by = "aid") %>% 
+    mutate(
+        sex = case_when(
+            bio_sex == 1 ~ 'male',
+            bio_sex == 2 ~ 'female'
+        )
+    )
+```
+
+# Data exploration
+
+Now we will create a few plots and calculate summary statistics to compare performance on the knowledge quiz across various sociodemographic groups.
+
+## Sex
+
+We first look at scores on the knowledge quiz by sex.
+
+```{r}
+# plot histogram of correct answers by sex
+ggplot(data = answers, mapping = aes(x = h1kqNa_sum))+
+    geom_histogram(aes(y=..density..), bins=10) +
+    facet_grid(sex ~ .) + 
+    xlab("Correct answers on Knowledge Quiz") +
+    scale_x_continuous(breaks=0:10)
+```
+\
+*`r figure_nums(name = "kq_sex_hist", caption = "Knowledge quiz score histogram by sex.")`*
+
+```{r}
+answers %>% 
+  group_by(sex) %>%
+  summarize(score_avg = mean(h1kqNa_sum),
+            score_median = median(h1kqNa_sum),
+            score_sd = sd(h1kqNa_sum),
+            sample_size = n()) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE, position = "left")
+```
+\
+*`r table_nums(name = "kq_sex_tbl", caption = "Knowledge quiz score statistics by sex.")`*
+
+Based on `r figure_nums(name = "kq_sex_hist", display = "cite")` and `r table_nums(name = "kq_sex_tbl", display = "cite")` it appears that, on average, women tend to score higher than men on the quiz. Let's see if this disparity is reflected in the reported confidence in their answers.
+
+```{r}
+# calculate knowledge quiz confidence score
+answers %<>% mutate(
+  kqconfidence = case_when(
+    h1kq1b > 4 ~ 0, # NA
+    h1kq2b > 4 ~ 0,
+    h1kq3b > 4 ~ 0,
+    h1kq4b > 4 ~ 0,  
+    h1kq5b > 4 ~ 0,
+    h1kq6b > 4 ~ 0,
+    h1kq7b > 4 ~ 0,
+    h1kq8b > 4 ~ 0, 
+    h1kq9b > 4 ~ 0,
+    h1kq10b > 4 ~ 0,
+    TRUE ~ h1kq1b + h1kq2b + h1kq3b + h1kq4b + 
+      h1kq5b + h1kq6b + h1kq7b + h1kq8b + h1kq9b + h1kq10b
+  )
+)
+
+# plot histogram of confidence in answers by sex
+ggplot(data = answers %>% filter(kqconfidence > 0), mapping = aes(x = kqconfidence))+
+    geom_histogram(aes(y=..density..), bins=31) +
+    facet_grid(sex ~ .) + 
+    xlab("Confidence in knowledge quiz answers") +
+    scale_x_continuous(breaks=10:40)
+```
+\
+*`r figure_nums(name = "kq_conf_hist", caption = "Knowledge quiz confidence histogram by sex.")`*
+
+```{r}
+answers %>% 
+  group_by(sex) %>%
+  summarize(conf_avg = mean(kqconfidence),
+            conf_median = median(kqconfidence),
+            conf_sd = sd(kqconfidence),
+            sample_size = n()) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE, position = "left")
+```
+\
+*`r table_nums(name = "kq_conf_tbl", caption = "Knowledge quiz confidence statistics by sex.")`*
+
+Based on `r figure_nums(name = "kq_conf_hist", display = "cite")` and `r table_nums(name = "kq_conf_tbl", display = "cite")` (and recalling that a lower confidence score implies higher confidence) it appears that, on average, men tend to report higher confidence than women on the knowledge quiz, despite having lower scores on average. Of course, these are just marginal averages, and I have not looked at the joint distribution of quiz score and reported confidence by sex.
+
+
+## Ethnicity/race
+
+### Hispanic ethnicity
+
+We now look at scores on the knowledge quiz by Hispanic ethnicity status.
+
+```{r}
+answers %<>%
+  # define new hispanic ethnicity status variable
+  mutate(hispanic = case_when(
+    h1gi4 == 0 ~ "No",
+    h1gi4 == 1 ~ "Yes",
+    TRUE ~ "NA"
+  ))
+
+# plot histogram of correct answers by hispanic ethnicity status
+ggplot(data = answers %>% filter(hispanic != "NA"), mapping = aes(x = h1kqNa_sum))+
+    geom_histogram(aes(y=..density..), bins=10) +
+    facet_grid(hispanic ~ .) + 
+    xlab("Correct answers on Knowledge Quiz") +
+    scale_x_continuous(breaks=0:10)
+```
+\
+*`r figure_nums(name = "kq_hispanic_hist", caption = "Knowledge quiz score histogram by hispanic ethnicity status")`*
+
+```{r}
+answers %>%
+  filter(hispanic != "NA") %>%
+  # group by hispanic ethnicity status
+  group_by(hispanic) %>% 
+  summarize(score_avg = mean(h1kqNa_sum),
+            score_median = median(h1kqNa_sum),
+            score_sd = sd(h1kqNa_sum),
+            sample_size = n()) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE, position = "left")
+```
+\
+*`r table_nums(name = "kq_hispanic_tbl", caption = "Knowledge quiz score statistics by Hispanic ethnicity status.")`*
+
+Based on `r figure_nums(name = "kq_hispanic_hist", display = "cite")` and `r table_nums(name = "kq_hispanic_tbl", display = "cite")`, it appears that, on average, non-Hispanics tend to score higher than Hispanics on the quiz.
+
+### Race
+
+We now look at scores on the knowledge quiz by race.
+
+```{r}
+# define single race variable
+answers %<>%
+  mutate(
+    single_race = case_when(
+      h1gi8 == 1 ~ "white",
+      h1gi8 == 2 ~ "black",
+      h1gi8 == 3 ~ "native american",
+      h1gi8 == 4 ~ "asian", 
+      h1gi8 == 5 ~ "other",
+      h1gi8 == 7 ~ case_when( # single race marked
+        h1gi6a == 1 ~ "white", # white
+        h1gi6b == 1 ~ "black", # black/african american  
+        h1gi6c == 1 ~ "native american", # american indian/native american
+        h1gi6d == 1 ~ "asian", # asian/pacific islander   
+        h1gi6e == 1 ~ "other", # other
+        TRUE ~ "NA"
+      ),
+      TRUE ~ "NA"
+    )
+  )
+
+answers %>%
+  filter(single_race != "NA") %>%
+  # group by race
+  group_by(single_race) %>% 
+  summarize(score_avg = mean(h1kqNa_sum),
+            score_median = median(h1kqNa_sum),
+            score_sd = sd(h1kqNa_sum),
+            sample_size = n()) %>%
+  arrange(desc(score_avg)) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE, position = "left")
+```
+\
+*`r table_nums(name = "kq_race_tbl", caption = "Knowledge quiz score statistics by race.")`*
+
+## Birth year cohort
+
+We now look at scores on the knowledge quiz by birth year cohort.
+
+```{r}
+answers %>% 
+  mutate(birth_year = h1gi1y) %>%
+  # group by birth year
+  group_by(birth_year) %>% 
+  summarize(score_avg = mean(h1kqNa_sum),
+            score_median = median(h1kqNa_sum),
+            score_sd = sd(h1kqNa_sum),
+            sample_size = n()) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE, position = "left")
+```
+\
+*`r table_nums(name = "kq_birth_tbl", caption = "Knowledge quiz score statistics by birth year cohort")`*
+
+Based on `r table_nums(name = "kq_birth_tbl", display = "cite")`, there appears to be variation in Knowedlege quiz scores across birth cohorts. Notably, we see rather large average quiz score increases as birth year (which we can think of as an *imperfect* proxy for age at time of interview) increases from 1974 to 1977. Average quiz score then declines some as birth year increases from 1977 to 1980. 
+
+Considering that the Wave 1 interviews took place in 1994-1995, respondents born in 1974-1975 would be between 18 and 21 years old at the time of interview. Lower performance on the knowledge quiz may then be explained by some of these older students having learning difficulties. 
+
+On the other hand, respondents in the younger birth cohorts might be expected to perform worse on the knowledge quiz than older students because they have not received as much sex education at the time of interview.
+
+
+# Research Question and Hypothesis
+
+Considering our observations about knowledge quiz score differences between birth year cohorts, one interesting research question (which we may not be able to answer with the Add Health data alone) is: "Does comprehensive sex education significantly increase students' knowledge about contraception?" Based on my initial findings, I would hypothesize that the answer is "yes."
+
+<hr>
+Rendered at <tt>`r Sys.time()`</tt>
+
+## Source code
+File is at `r fnamepath`.
+
+### R code used in this document
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+### Complete Rmd code
+```{r comment=''}
+cat(readLines(fnamepath), sep = '\n')
+```
